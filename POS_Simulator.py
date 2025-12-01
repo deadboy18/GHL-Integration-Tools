@@ -9,10 +9,10 @@ import json
 import os
 
 # --- THEME CONSTANTS ---
-COL_BG_MAIN = "#F4F6F9"       
+COL_BG_MAIN = "#F4F6F9"        
 COL_CARD = "#FFFFFF"          
 COL_TEXT = "#2C3E50"          
-COL_HEADER_TXT = "#00ACC1"    
+COL_HEADER_TXT = "#00ACC1"     
 
 COL_SALE = "#43A047"          
 COL_VOID = "#FB8C00"          
@@ -50,44 +50,111 @@ class ToastNotification(tk.Toplevel):
         self.geometry(f"+{x}+{y}")
         self.after(duration, self.destroy)
 
+# --- HELPER: CARD LEGEND POPUP ---
+class CardLegendPopup(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Card Type Codes")
+        self.geometry("250x300")
+        self.configure(bg=COL_BG_MAIN)
+        self.attributes("-topmost", True)
+        
+        # Position near the parent
+        x = parent.winfo_rootx() + parent.winfo_width() + 10
+        y = parent.winfo_rooty()
+        self.geometry(f"+{x}+{y}")
+
+        lbl = tk.Label(self, text="CARD TYPE MAPPING", bg=COL_BG_MAIN, fg=COL_HEADER_TXT, font=("Segoe UI", 10, "bold"))
+        lbl.pack(pady=10)
+
+        # Mapping content from Spec Appendix B 
+        content = """
+04 = VISA
+05 = MasterCard
+06 = Diners
+07 = Amex
+08 = MyDebit
+09 = JCB
+10 = UnionPay
+11 = eWallet
+"""
+        txt = tk.Label(self, text=content, bg=COL_BG_MAIN, fg="#333", font=("Consolas", 11), justify="left")
+        txt.pack(padx=20, pady=5)
+        
+        ttk.Button(self, text="CLOSE", command=self.destroy).pack(pady=10)
+
 # --- HELPER: DIGITAL RECEIPT POPUP ---
 class ReceiptPopup(tk.Toplevel):
     def __init__(self, parent, data_dict):
         super().__init__(parent)
         self.title("Transaction Receipt")
-        self.geometry("300x400")
+        self.geometry("420x780") 
         self.configure(bg=COL_RECEIPT_BG)
         self.attributes("-topmost", True)
         
         # Center Screen
-        x = parent.winfo_rootx() + (parent.winfo_width() // 2) - 150
-        y = parent.winfo_rooty() + (parent.winfo_height() // 2) - 200
+        x = parent.winfo_rootx() + (parent.winfo_width() // 2) - 210
+        y = parent.winfo_rooty() + (parent.winfo_height() // 2) - 390
         self.geometry(f"+{x}+{y}")
 
         # UI
         lbl_title = tk.Label(self, text="*** APPROVED ***", bg=COL_RECEIPT_BG, fg="black", font=("Courier New", 14, "bold"))
         lbl_title.pack(pady=(20, 10))
         
-        txt = f"""
-MERCHANT: GHL SIMULATOR
-TIME: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        # Parse Expiry (YYMM -> YYYY Month)
+        raw_exp = data_dict.get('expiry', '0000')
+        readable_exp = "INVALID"
+        try:
+            # Assuming YYMM based on user input "3202" -> "2032 February"
+            dt = datetime.strptime(raw_exp, "%y%m")
+            readable_exp = dt.strftime("%Y %B")
+        except:
+            readable_exp = "Unknown Format"
 
-TRANS TYPE: {data_dict.get('type', 'SALE')}
-INVOICE NO: {data_dict.get('invoice', '000000')}
-CARD NO:    {data_dict.get('card', 'XXXX')}
-AUTH CODE:  {data_dict.get('auth', '000000')}
+        # Fully Detailed Receipt Text
+        self.receipt_content = f"""
+MERCHANT ID:  {data_dict.get('merchant_id', 'UNKNOWN')}
+TERMINAL ID:  {data_dict.get('terminal_id', 'UNKNOWN')}
+TIME:         {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+BATCH NO:     {data_dict.get('batch', '----')}
 
 ------------------------------
-TOTAL:      RM {data_dict.get('amount', '0.00')}
+STAN:         {data_dict.get('stan', '000000')} [Byte 65]
+INVOICE (TRACE): {data_dict.get('invoice', '000000')} [Byte 71]
+------------------------------
+
+TRANS TYPE:   {data_dict.get('type', 'SALE')}
+CASHIER ID:   {data_dict.get('cashier', '----')}
+
+CARD NO:      {data_dict.get('card', 'XXXX')}
+EXPIRY YYMM:  {raw_exp}
+EXPIRY:       {readable_exp}
+CARD TYPE:    {data_dict.get('card_scheme', 'UNKNOWN')}
+AUTH CODE:    {data_dict.get('auth', '000000')}
+
+------------------------------
+GROSS AMT:    RM {data_dict.get('amount', '0.00')}
+NET AMT:      RM {data_dict.get('net_amount', '0.00')}
 ------------------------------
 
       THANK YOU!
 """
-        lbl_info = tk.Label(self, text=txt, bg=COL_RECEIPT_BG, fg="black", font=FONT_RECEIPT, justify="left")
+        lbl_info = tk.Label(self, text=self.receipt_content, bg=COL_RECEIPT_BG, fg="black", font=FONT_RECEIPT, justify="left")
         lbl_info.pack(padx=20, pady=5)
         
-        btn = ttk.Button(self, text="CLOSE", command=self.destroy)
-        btn.pack(pady=20)
+        # Buttons Frame
+        btn_frame = tk.Frame(self, bg=COL_RECEIPT_BG)
+        btn_frame.pack(pady=20)
+
+        # Copy Button
+        ttk.Button(btn_frame, text="COPY TEXT", command=self.copy_text).pack(side="left", padx=5)
+        # Close Button
+        ttk.Button(btn_frame, text="CLOSE", command=self.destroy).pack(side="left", padx=5)
+
+    def copy_text(self):
+        self.clipboard_clear()
+        self.clipboard_append(self.receipt_content)
+        messagebox.showinfo("Copied", "Receipt text has been copied to clipboard!")
 
 # --- CUSTOM WIDGET: ATM INPUT ---
 class CurrencyEntry(tk.Entry):
@@ -163,6 +230,7 @@ class GHLProtocol:
         return bytes(chk)
 
     def build_packet(self, cmd, amt, inv, cshr):
+        # Spec 4.1 [cite: 240]
         payload = f"{cmd}{int(amt*100):012d}{int(inv):06d}{str(cshr):>4}".encode('ascii')
         return STX + payload + self.calculate_chk(payload) + ETX
 
@@ -196,18 +264,29 @@ class GHLProtocol:
 
 # --- GUI ---
 class POSApp:
+    # --- Card Type Mapping from Spec Appendix B  ---
+    CARD_TYPES = {
+        "04": "VISA",
+        "05": "MASTERCARD",
+        "06": "DINERS",
+        "07": "AMEX",
+        "08": "MYDEBIT",
+        "09": "JCB",
+        "10": "UNIONPAY",
+        "11": "E-WALLET"
+    }
+
     def __init__(self, root):
         self.root = root
-        self.root.title("GHL Terminal Simulator // DEADBOY v7")
-        self.root.geometry("900x750")
+        self.root.title("GHL Terminal Simulator // KESH v1019")
+        self.root.geometry("950x800")
         self.root.configure(bg=COL_BG_MAIN)
         self.proto = GHLProtocol()
         
         self.setup_styles()
         self.build_layout()
-        self.load_settings() # Load saved data
+        self.load_settings() 
 
-        # Ensure port closes on exit
         import atexit
         atexit.register(self.proto.disconnect)
 
@@ -272,8 +351,8 @@ class POSApp:
         
         qf = ttk.Frame(input_grid, style="Card.TFrame")
         qf.grid(row=1, column=1, sticky="w", padx=10, pady=(2, 0))
-        for amt in [1, 5, 10, 50]:
-            ttk.Button(qf, text=f"{amt}", style="Small.TButton", width=4,
+        for amt in [0.01, 1, 5, 10, 50]:
+            ttk.Button(qf, text=f"{amt}", style="Small.TButton", width=5,
                        command=lambda a=amt: self.ent_amt.set_amount(a)).pack(side="left", padx=1)
 
         # Invoice
@@ -320,6 +399,8 @@ class POSApp:
         
         tools = ttk.Frame(log_lbl, style="Card.TFrame")
         tools.pack(side="right")
+        # Added CODES button
+        ttk.Button(tools, text="CODES", style="Small.TButton", width=8, command=self.show_legend).pack(side="left", padx=2)
         ttk.Button(tools, text="COPY", style="Small.TButton", width=8, command=self.copy_log).pack(side="left", padx=2)
         ttk.Button(tools, text="SAVE", style="Small.TButton", width=8, command=self.save_log).pack(side="left", padx=2)
         ttk.Button(tools, text="CLEAR", style="Small.TButton", width=8, command=self.clr_log).pack(side="left", padx=2)
@@ -362,26 +443,85 @@ class POSApp:
     def show_toast(self, message, color="#333333"):
         ToastNotification(self.root, message, color=color)
 
+    def show_legend(self):
+        CardLegendPopup(self.root)
+
     def show_receipt(self, data):
-        # Extract meaningful data from raw payload
-        # Spec 4.2: Payload = Cmd(3)+Err(2)+Card(22)+Exp(4)+Type(2)+Auth(8)+Amt(12)...
-        # Note: Indexing here is approximate based on fixed width.
+        # Spec 4.2 [cite: 254]
         try:
-            payload = data[1:-9] # Strip framing
-            if len(payload) < 50: return # Too short
+            # Strip STX (1 byte) and CheckDigit+ETX (9 bytes)
+            payload = data[1:-9] 
+            p_len = len(payload)
             
+            # LOGGING FOR DEBUGGING
+            self.log(f"RX Payload Length: {p_len} bytes")
+            if p_len < 125:
+                self.log("WARN: Payload < 125. Firmware may be pre-v1.0.17", "err")
+
+            # Helper to safely extract fields even if packet is short
+            def get_val(start, length, is_numeric=False):
+                if p_len < start + length: return "N/A"
+                raw = payload[start:start+length].decode(errors='ignore')
+                if is_numeric: return raw.strip() 
+                return raw.strip()
+
+            # Safe conversion for money
+            def get_money(start, length):
+                try:
+                    val_str = get_val(start, length, True)
+                    if "N/A" in val_str: return "0.00"
+                    val = int(val_str)
+                    return "{:.2f}".format(val / 100)
+                except: return "0.00"
+            
+            # Parse Card Number: remove length prefix and padding
+            def format_card(raw):
+                if raw == "N/A" or len(raw) < 2: return raw
+                try:
+                    c_len = int(raw[:2])
+                    return raw[2:2+c_len] # Return readable
+                except: return raw
+
+            # Parse Card Scheme Code (Index 31-33)
+            # User request: Show "08 (MyDebit)" format
+            raw_type_code = "11"
+            if p_len >= 33:
+                raw_type_code = payload[31:33].decode(errors='ignore')
+            
+            card_name_str = self.CARD_TYPES.get(raw_type_code, "UNKNOWN")
+            display_card_type = f"{raw_type_code} ({card_name_str})"
+
+            # --- DATA MAPPING based on Source 254 ---
             d_dict = {
-                "type": "SALE", # Default
-                "card": payload[5:27].decode(errors='ignore').strip(),
-                "auth": payload[33:41].decode(errors='ignore').strip(),
-                "amount": "{:.2f}".format(int(payload[41:53]) / 100)
+                "type": "SALE", 
+                "card":         format_card(get_val(5, 22).replace('X', '*')), 
+                "expiry":       get_val(27, 4),
+                
+                # Shows Number + Name
+                "card_scheme":  display_card_type, 
+                
+                "auth":         get_val(33, 8),
+                "amount":       get_money(41, 12),
+                "net_amount":   get_money(53, 12), # Added Net Amount
+                
+                # Protocol Byte 65 = Trace Number = Bank Sim "STAN"
+                "stan":         get_val(65, 6), 
+                # Protocol Byte 71 = Invoice Number = Bank Sim "Inv Num" (Trace on receipt)
+                "invoice":      get_val(71, 6), 
+
+                "cashier":      get_val(77, 4),
+                "card_name":    get_val(81, 15), 
+                "terminal_id":  get_val(96, 8),   
+                "merchant_id":  get_val(104, 15),
+                "batch":        get_val(119, 6, True)
             }
-            # Invoice is further down, roughly index 65, length 6
-            if len(payload) > 70:
-                d_dict['invoice'] = payload[65:71].decode(errors='ignore')
 
             ReceiptPopup(self.root, d_dict)
-        except: pass
+            
+        except Exception as e: 
+            self.log(f"Receipt Parsing Error: {e}", "err")
+            import traceback
+            traceback.print_exc()
 
     def log(self, msg, tag=None):
         ts = datetime.now().strftime("[%H:%M:%S] ")
@@ -436,6 +576,7 @@ class POSApp:
             return
         
         try:
+            # Logic based on Message Format
             amt = 0.0 if cmd in ["050", "022"] else self.ent_amt.get_amount()
             inv = 0 if cmd in ["020", "050"] else int(self.ent_inv.get())
             cshr = self.ent_csh.get()
