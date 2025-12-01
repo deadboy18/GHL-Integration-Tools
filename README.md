@@ -3,6 +3,15 @@
 ## Overview
 This software simulates the behavior of a GHL/Verifone payment terminal via RS232. It is designed to help developers and IT professionals test their Point of Sale (POS) integration without needing to perform live transactions. It implements the specific packet structure, check digit algorithms, and handshake protocols defined in the **POS Integration v1017** specification.
 
+## 🎥 See it in Action
+
+https://github.com/user-attachments/assets/5b59c053-6600-4861-b0ac-29dbba90bf32
+
+<!-- VIDEO PLACEHOLDER START -->
+<!-- Drag and drop your MP4/MOV file here, or paste your YouTube/GIF link below -->
+
+<!-- VIDEO PLACEHOLDER END -->
+
 ## 📂 Included Files
 * **`GHL_Terminal_Simulator_Deadboy_v7_Final.exe`** - The main standalone application (Python build).
 * **`GHL_Simulator_Deadboy` (Folder)** - Complete C# Source Code (Visual Studio Project).
